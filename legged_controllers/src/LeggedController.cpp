@@ -130,9 +130,13 @@ void LeggedController::update(const ros::Time& time, const ros::Duration& period
     ROS_ERROR_STREAM("[Legged Controller] Safety check failed, stopping the controller.");
     stopRequest(time);
   }
-
+  ROS_INFO_STREAM("Value of optimizedState1: " << optimizedState);
+  ROS_INFO_STREAM("Value of optimizedInput2: " << optimizedInput);
   for (size_t j = 0; j < leggedInterface_->getCentroidalModelInfo().actuatedDofNum; ++j) {
     hybridJointHandles_[j].setCommand(posDes(j), velDes(j), 0, 3, torque(j));
+    ROS_INFO("Value of posDes(%d): %f", j, posDes(j));
+    ROS_INFO("Value of velDes(%d): %f", j, velDes(j));
+    ROS_INFO("Value of torque(%d): %f", j, torque(j));
   }
 
   // Visualization
@@ -157,6 +161,7 @@ void LeggedController::updateStateEstimation(const ros::Time& time, const ros::D
   }
   for (size_t i = 0; i < contacts.size(); ++i) {
     contactFlag[i] = contactHandles_[i].isContact();
+    // ROS_INFO("Value of contactFlag[%d]: %d", i,contactFlag[i]);
   }
   for (size_t i = 0; i < 4; ++i) {
     quat.coeffs()(i) = imuSensorHandle_.getOrientation()[i];
@@ -164,6 +169,7 @@ void LeggedController::updateStateEstimation(const ros::Time& time, const ros::D
   for (size_t i = 0; i < 3; ++i) {
     angularVel(i) = imuSensorHandle_.getAngularVelocity()[i];
     linearAccel(i) = imuSensorHandle_.getLinearAcceleration()[i];
+    // ROS_INFO("Value of linearAccel(%d): %f", i, linearAccel(i));
   }
   for (size_t i = 0; i < 9; ++i) {
     orientationCovariance(i) = imuSensorHandle_.getOrientationCovariance()[i];
@@ -179,6 +185,8 @@ void LeggedController::updateStateEstimation(const ros::Time& time, const ros::D
   scalar_t yawLast = currentObservation_.state(9);
   currentObservation_.state = rbdConversions_->computeCentroidalStateFromRbdModel(measuredRbdState_);
   currentObservation_.state(9) = yawLast + angles::shortest_angular_distance(yawLast, currentObservation_.state(9));
+  // ROS_INFO_STREAM("Value of currentObservation_.state: " << currentObservation_.state);
+  // ROS_INFO("Dimension of currentObservation_.state: %ld", currentObservation_.state.size());
   currentObservation_.mode = stateEstimate_->getMode();
 }
 

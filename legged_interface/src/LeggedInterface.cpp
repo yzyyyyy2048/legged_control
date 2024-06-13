@@ -218,8 +218,12 @@ matrix_t LeggedInterface::initializeInputCostWeight(const std::string& taskFile,
   for (size_t i = 0; i < info.numThreeDofContacts; i++) {
     matrix_t jac = matrix_t::Zero(6, info.generalizedCoordinatesNum);
     pinocchio::getFrameJacobian(model, data, model.getBodyId(modelSettings_.contactNames3DoF[i]), pinocchio::LOCAL_WORLD_ALIGNED, jac);
+    std::cout << "jac:\n" << jac << std::endl;
     base2feetJac.block(3 * i, 0, 3, info.actuatedDofNum) = jac.block(0, 6, 3, info.actuatedDofNum);
   }
+  std::cout << "base2feetJac:\n" << base2feetJac << std::endl;
+  std::cout << "base2feetJac dimensions: " << base2feetJac.rows() << " x " << base2feetJac.cols() << std::endl;
+  std::cout << "base2feetJac:\n" << base2feetJac << std::endl;
 
   matrix_t rTaskspace(info.inputDim, info.inputDim);
   loadData::loadEigenMatrix(taskFile, "R", rTaskspace);
@@ -239,6 +243,9 @@ std::unique_ptr<StateInputCost> LeggedInterface::getBaseTrackingCost(const std::
   matrix_t Q(info.stateDim, info.stateDim);
   loadData::loadEigenMatrix(taskFile, "Q", Q);
   matrix_t R = initializeInputCostWeight(taskFile, info);
+  std::cout << R << std::endl;
+  std::cout << "Matrix R dimensions: " << R.rows() << " x " << R.cols() << std::endl;
+
 
   if (verbose) {
     std::cerr << "\n #### Base Tracking Cost Coefficients: ";
