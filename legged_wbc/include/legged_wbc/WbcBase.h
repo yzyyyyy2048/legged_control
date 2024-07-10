@@ -9,6 +9,10 @@
 #include <ocs2_centroidal_model/PinocchioCentroidalDynamics.h>
 #include <ocs2_legged_robot/gait/MotionPhaseDefinition.h>
 #include <ocs2_pinocchio_interface/PinocchioEndEffectorKinematics.h>
+#include "ros/ros.h"
+#include <std_msgs/Float64.h>
+#include <std_msgs/Float64MultiArray.h>
+
 
 namespace legged {
 using namespace ocs2;
@@ -49,9 +53,16 @@ class WbcBase {
   CentroidalModelPinocchioMapping mapping_;
 
   vector_t qMeasured_, vMeasured_, inputLast_;
+  vector_t torque_ref;
+
+  ros::Publisher torque_ref_Publisher_;
+  
+
   matrix_t j_, dj_;
   contact_flag_t contactFlag_{};
   size_t numContacts_{};
+
+
 
   // Task Parameters:
   vector_t torqueLimits_;

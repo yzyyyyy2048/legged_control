@@ -40,7 +40,7 @@ class Task {
   matrix_t a_, d_;
   vector_t b_, f_;
 
-  static matrix_t concatenateMatrices(matrix_t m1, matrix_t m2) {
+  static matrix_t concatenateMatrices(matrix_t m1, matrix_t m2) { //拼接矩阵
     if (m1.cols() <= 0) {
       return m2;
     } else if (m2.cols() <= 0) {
@@ -52,7 +52,7 @@ class Task {
     return res;
   }
 
-  static vector_t concatenateVectors(const vector_t& v1, const vector_t& v2) {
+  static vector_t concatenateVectors(const vector_t& v1, const vector_t& v2) { //拼接向量
     if (v1.cols() <= 0) {
       return v2;
     } else if (v2.cols() <= 0) {

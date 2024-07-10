@@ -21,9 +21,15 @@ WbcBase::WbcBase(const PinocchioInterface& pinocchioInterface, CentroidalModelIn
       mapping_(info_),
       inputLast_(vector_t::Zero(info_.inputDim)),
       eeKinematics_(eeKinematics.clone()) {
-  numDecisionVars_ = info_.generalizedCoordinatesNum + 3 * info_.numThreeDofContacts + info_.actuatedDofNum;
+  numDecisionVars_ = info_.generalizedCoordinatesNum + 3 * info_.numThreeDofContacts + info_.actuatedDofNum; // 18 + 3 * 4 + 12 = 42
   qMeasured_ = vector_t(info_.generalizedCoordinatesNum);
   vMeasured_ = vector_t(info_.generalizedCoordinatesNum);
+
+  const std::string robotName = "legged_robot";
+  ros::NodeHandle nh;
+  
+  torque_ref_Publisher_ = nh.advertise<std_msgs::Float64MultiArray>(robotName + "_ref_torque", 1);
+
 }
 
 vector_t WbcBase::update(const vector_t& stateDesired, const vector_t& inputDesired, const vector_t& rbdStateMeasured, size_t mode,
@@ -32,7 +38,7 @@ vector_t WbcBase::update(const vector_t& stateDesired, const vector_t& inputDesi
   numContacts_ = 0;
   for (bool flag : contactFlag_) {
     if (flag) {
-      numContacts_++;
+      numContacts_++; //当前的支撑脚
     }
   }
 
@@ -61,6 +67,7 @@ void WbcBase::updateMeasured(const vector_t& rbdStateMeasured) {
   pinocchio::crba(model, data, qMeasured_);
   data.M.triangularView<Eigen::StrictlyLower>() = data.M.transpose().triangularView<Eigen::StrictlyLower>();
   pinocchio::nonLinearEffects(model, data, qMeasured_, vMeasured_);
+
   j_ = matrix_t(3 * info_.numThreeDofContacts, info_.generalizedCoordinatesNum);
   for (size_t i = 0; i < info_.numThreeDofContacts; ++i) {
     Eigen::Matrix<scalar_t, 6, Eigen::Dynamic> jac;
@@ -68,6 +75,7 @@ void WbcBase::updateMeasured(const vector_t& rbdStateMeasured) {
     pinocchio::getFrameJacobian(model, data, info_.endEffectorFrameIndices[i], pinocchio::LOCAL_WORLD_ALIGNED, jac);
     j_.block(3 * i, 0, 3, info_.generalizedCoordinatesNum) = jac.template topRows<3>();
   }
+
 
   // For not contact motion task
   pinocchio::computeJointJacobiansTimeVariation(model, data, qMeasured_, vMeasured_);
@@ -92,39 +100,60 @@ void WbcBase::updateDesired(const vector_t& stateDesired, const vector_t& inputD
   updateCentroidalDynamics(pinocchioInterfaceDesired_, info_, qDesired);
   const vector_t vDesired = mapping_.getPinocchioJointVelocity(stateDesired, inputDesired);
   pinocchio::forwardKinematics(model, data, qDesired, vDesired);
+  
+
+  torque_ref = pinocchio::rnea(model, data, qDesired, vDesired, inputDesired.head<12>());
+
+  torque_ref = torque_ref.tail(model.nv - 6);
+
+
+
+  std_msgs::Float64MultiArray torque_ref_msg;
+  
+  torque_ref_msg.data.resize(torque_ref.size());
+
+  for (int i = 0; i < torque_ref.size(); ++i) {
+    torque_ref_msg.data[i] = torque_ref[i];
+    }
+
+  torque_ref_Publisher_.publish(torque_ref_msg);
+  
 }
 
 Task WbcBase::formulateFloatingBaseEomTask() {
   auto& data = pinocchioInterfaceMeasured_.getData();
 
-  matrix_t s(info_.actuatedDofNum, info_.generalizedCoordinatesNum);
-  s.block(0, 0, info_.actuatedDofNum, 6).setZero();
-  s.block(0, 6, info_.actuatedDofNum, info_.actuatedDofNum).setIdentity();
+  matrix_t s(info_.actuatedDofNum, info_.generalizedCoordinatesNum); // 12 * （6 + 12） = 12 * 18
 
-  matrix_t a = (matrix_t(info_.generalizedCoordinatesNum, numDecisionVars_) << data.M, -j_.transpose(), -s.transpose()).finished();
+  s.block(0, 0, info_.actuatedDofNum, 6).setZero(); //12 * 6 = 0
+  s.block(0, 6, info_.actuatedDofNum, info_.actuatedDofNum).setIdentity();//12 * 12 = 1
+
+  matrix_t a = (matrix_t(info_.generalizedCoordinatesNum, numDecisionVars_) << data.M, -j_.transpose(), -s.transpose()).finished(); // 18 * 42
   vector_t b = -data.nle;
 
   return {a, b, matrix_t(), vector_t()};
 }
 
 Task WbcBase::formulateTorqueLimitsTask() {
-  matrix_t d(2 * info_.actuatedDofNum, numDecisionVars_);
+  matrix_t d(2 * info_.actuatedDofNum, numDecisionVars_); // 24 * 42
   d.setZero();
-  matrix_t i = matrix_t::Identity(info_.actuatedDofNum, info_.actuatedDofNum);
-  d.block(0, info_.generalizedCoordinatesNum + 3 * info_.numThreeDofContacts, info_.actuatedDofNum, info_.actuatedDofNum) = i;
+  matrix_t i = matrix_t::Identity(info_.actuatedDofNum, info_.actuatedDofNum); // 12 * 12
+  // 填充d
+  d.block(0, info_.generalizedCoordinatesNum + 3 * info_.numThreeDofContacts, info_.actuatedDofNum, info_.actuatedDofNum) = i; 
   d.block(info_.actuatedDofNum, info_.generalizedCoordinatesNum + 3 * info_.numThreeDofContacts, info_.actuatedDofNum,
           info_.actuatedDofNum) = -i;
-  vector_t f(2 * info_.actuatedDofNum);
-  for (size_t l = 0; l < 2 * info_.actuatedDofNum / 3; ++l) {
-    f.segment<3>(3 * l) = torqueLimits_;
+  vector_t f(2 * info_.actuatedDofNum); // 24
+
+  for (size_t l = 0; l < 2 * info_.actuatedDofNum / 3; ++l) { //为什么是2 * info_.actuatedDofNum / 3
+    f.segment<3>(3 * l) = torqueLimits_; 
   }
 
   return {matrix_t(), vector_t(), d, f};
 }
 
 Task WbcBase::formulateNoContactMotionTask() {
-  matrix_t a(3 * numContacts_, numDecisionVars_);
-  vector_t b(a.rows());
+  matrix_t a(3 * numContacts_, numDecisionVars_); // (3*当前支撑脚的数量) * 42
+  vector_t b(a.rows()); // 12
   a.setZero();
   b.setZero();
   size_t j = 0;
@@ -144,7 +173,7 @@ Task WbcBase::formulateFrictionConeTask() {
   a.setZero();
   size_t j = 0;
   for (size_t i = 0; i < info_.numThreeDofContacts; ++i) {
-    if (!contactFlag_[i]) {
+    if (!contactFlag_[i]) { //当前脚不是支撑脚
       a.block(3 * j++, info_.generalizedCoordinatesNum + 3 * i, 3, 3) = matrix_t::Identity(3, 3);
     }
   }
@@ -207,7 +236,7 @@ Task WbcBase::formulateSwingLegTask() {
   std::vector<vector3_t> posDesired = eeKinematics_->getPosition(vector_t());
   std::vector<vector3_t> velDesired = eeKinematics_->getVelocity(vector_t(), vector_t());
 
-  matrix_t a(3 * (info_.numThreeDofContacts - numContacts_), numDecisionVars_);
+  matrix_t a(3 * (info_.numThreeDofContacts - numContacts_), numDecisionVars_); //
   vector_t b(a.rows());
   a.setZero();
   b.setZero();

@@ -3,6 +3,7 @@
 //
 
 #include <pinocchio/fwd.hpp>  // forward declarations must be included first.
+#include <pinocchio/algorithm/rnea.hpp>
 
 #include "legged_controllers/LeggedController.h"
 
@@ -39,6 +40,8 @@ bool LeggedController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHand
   setupLeggedInterface(taskFile, urdfFile, referenceFile, verbose);
   setupMpc();
   setupMrt();
+  setupTorque();
+
   // Visualization
   ros::NodeHandle nh;
   CentroidalModelPinocchioMapping pinocchioMapping(leggedInterface_->getCentroidalModelInfo());
@@ -121,6 +124,23 @@ void LeggedController::update(const ros::Time& time, const ros::Duration& period
   wbcTimer_.endTimer();
 
   vector_t torque = x.tail(12);
+
+  std_msgs::Float64MultiArray torque_msg;
+  torque_msg.data.resize(torque.size());
+
+  for (int i = 0; i < torque.size(); ++i) {
+    torque_msg.data[i] = torque[i];
+    }
+
+  wbc_torque_Publisher_.publish(torque_msg);
+  
+  // wbc_torque_Publisher_ = nh.advertise<std_msgs::Float64MultiArray>(robotName + "_mpc_observation", 1);
+
+  // const auto& model = pinocchioInterfaceMeasured_.getModel();
+
+  // pinocchio::rnea(model, data, q, dq, ddq, Force);
+
+  // static aligned_vector<pinocchio::Force> feetForces;
 
   vector_t posDes = centroidal_model::getJointAngles(optimizedState, leggedInterface_->getCentroidalModelInfo());
   vector_t velDes = centroidal_model::getJointVelocities(optimizedInput, leggedInterface_->getCentroidalModelInfo());
@@ -256,6 +276,15 @@ void LeggedController::setupMrt() {
     }
   });
   setThreadPriority(leggedInterface_->sqpSettings().threadPriority, mpcThread_);
+}
+
+void LeggedController::setupTorque() {
+
+
+  const std::string robotName = "legged_robot";
+  ros::NodeHandle nh;
+  
+  wbc_torque_Publisher_ = nh.advertise<std_msgs::Float64MultiArray>(robotName + "_wbc_torque", 1);
 }
 
 void LeggedController::setupStateEstimate(const std::string& taskFile, bool verbose) {

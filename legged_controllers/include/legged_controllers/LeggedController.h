@@ -20,6 +20,9 @@
 #include "legged_controllers/SafetyChecker.h"
 #include "legged_controllers/visualization/LeggedSelfCollisionVisualization.h"
 
+#include <std_msgs/Float64.h>
+#include <std_msgs/Float64MultiArray.h>
+
 namespace legged {
 using namespace ocs2;
 using namespace legged_robot;
@@ -42,6 +45,8 @@ class LeggedController : public controller_interface::MultiInterfaceController<H
   virtual void setupMpc();
   virtual void setupMrt();
   virtual void setupStateEstimate(const std::string& taskFile, bool verbose);
+
+  virtual void setupTorque();
 
   // Interface
   std::shared_ptr<LeggedInterface> leggedInterface_;
@@ -68,6 +73,9 @@ class LeggedController : public controller_interface::MultiInterfaceController<H
   std::shared_ptr<LeggedRobotVisualizer> robotVisualizer_;
   std::shared_ptr<LeggedSelfCollisionVisualization> selfCollisionVisualization_;
   ros::Publisher observationPublisher_;
+
+  ros::Publisher wbc_torque_Publisher_;
+  // ros::Publisher torque_ref_Publisher_;
 
  private:
   std::thread mpcThread_;
